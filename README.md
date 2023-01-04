@@ -1,23 +1,24 @@
 # ComponentBus
 ComponentBus 用于组件（module）间的通信, 而不必相互依赖.
 
-## project build.gradle 内添加 ksp 插件
+## 1. project build.gradle 内添加 ksp 插件
 ```groovy
 plugins {
     id "com.google.devtools.ksp" version "1.7.10-1.0.6" apply false
 }
 ```
 
-## app module build.gradle 内添加插件、要扫描的jar包、ksp 生成文件引入
+## 2. app module build.gradle 内添加插件、要扫描的jar包、ksp 生成文件引入
 ```groovy
 plugins {
     id "com.google.devtools.ksp"
-    id 'love.nuoyan.android.component_bus_register' version '0.0.1'
+    id 'love.nuoyan.android.component_bus_register' version '0.0.3'
 }
 
+// 扫描列表会默认扫描 component_bus 及 classes，不用在此处添加
 componentBusExt {
     jarNameScanList = [
-            "classes", // jar包名称，构建时会打印所有jar包名称，把需要扫描的进行添加
+            "xxx", // jar包名称，构建时会打印所有jar包名称，把需要扫描的进行添加(jar内包含拦截器或组件API)
             "xxx"
     ]
 }
@@ -34,7 +35,15 @@ android {
     }
 }
 
-// library module 中添加如下代码
+```
+
+## 3. library module 内添加依赖和 ksp 插件及生成文件引用
+```groovy
+plugins {
+    id "com.google.devtools.ksp"
+}
+
+// library module 中添加如下代码引用ksp生成文件
 android {
     libraryVariants.all { variant ->
         kotlin.sourceSets {
@@ -45,19 +54,13 @@ android {
         }
     }
 }
+
+// 添加依赖
+implementation 'love.nuoyan.android:component_bus:0.0.3'
+ksp "love.nuoyan.android:component_bus_processor:0.0.3"
 ```
 
-## module 内添加依赖
-```groovy
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.7.10"
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4'       // kotlin 协程
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
-
-    implementation 'love.nuoyan.component_bus:bus:0.0.1'
-    ksp 'love.nuoyan.component_bus:processor:0.0.1'
-```
-
-## module 内添加组件 API
+## 4. module 内添加组件 API
 ```kotlin
 @Component(componentName = "组件名称")
 object MainComponent {
@@ -81,7 +84,7 @@ object MainComponent {
 }
 ```
 
-## 添加拦截器
+## 5. 添加拦截器
 ```kotlin
 object TestInterceptor : IInterceptor {
     override suspend fun <T> intercept(chain: Chain): Result<T> {
@@ -94,9 +97,29 @@ object TestInterceptor : IInterceptor {
         return chain.proceedSync()
     }
 }
+
+object LoginInterceptor : IInterceptor {
+    override suspend fun <T> intercept(chain: Chain): Result<T> {
+        return if (UsercenterComponent.isLogin == true) {
+            chain.proceed()
+        } else {
+            UsercenterComponent.showLogin()
+            Result.resultError(-3, "拦截, 进入登录页")
+        }
+    }
+
+    override fun <T> interceptSync(chain: Chain): Result<T> {
+        return if (UsercenterComponent.isLogin == true) {
+            chain.proceedSync()
+        } else {
+            UsercenterComponent.showLogin()
+            Result.resultError(-3, "拦截, 进入登录页")
+        }
+    }
+}
 ```
 
-## 添加全局拦截器
+## 6. 添加全局拦截器
 ```kotlin
 object LogGlobalInterceptor : GlobalInterceptor() {
     init {
@@ -115,14 +138,31 @@ object LogGlobalInterceptor : GlobalInterceptor() {
 }
 ```
 
-## 调用组件 Action
+## 7. 调用组件 Action
 ```kotlin
 val result = ComponentBus.with("组件名称", "事件名称")
     .params("params1", 1)
     .interceptors("TestInterceptor")
     .apply {
-        params["params2"] = 2
+        params["params2"] = 2   // 两种添加参数方式是等效的
         interceptors.add("TestInterceptor2") 
     }
     .callSync<Boolean>()
 ```
+
+## 8. AS 插件使用
+搜索插件 ComponentBus 添加
+
+![img.png](ComponentBusPlugin.gif)
+
+### 1. 用于选择组件及事件
+快捷键：option + B  
+Tools -> ComponentBus -> ComponentSelect
+
+### 2. 导航到该行代码使用的组件名称对应的类
+ComponentBus.with("ComponentName", "ActionName")
+
+### 3. 代码提示
+输入匹配的组件名提示补全组件名称  
+当首字母输入数字时，会显示全部组件名称  
+提示所属组为 ComponentBus  
